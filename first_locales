@@ -1,0 +1,460 @@
+--Create table First dots
+
+--If selecting for all
+
+--DROP TABLE IF EXISTS First_Dots CASCADE;
+--SELECT * INTO First_Dots FROM LY;
+
+--If selecting only within range
+
+DROP TABLE IF EXISTS First_Dots CASCADE;
+SELECT * INTO First_Dots FROM LY
+WHERE byear >=1200
+AND byear <=2010;
+
+--Reduce columns
+
+ALTER TABLE First_Dots
+DROP COLUMN country,
+DROP COLUMN continent,
+DROP COLUMN res,
+DROP COLUMN dyear
+RESTRICT;
+
+ALTER TABLE First_Dots
+ADD lat_lon character varying(250);
+
+UPDATE First_Dots SET lat_lon = CONCAT (lat,'-','lon')
+
+
+--Count distinct places
+SELECT COUNT(DISTINCT lat_lon) FROM First_Dots;
+SELECT COUNT(*) FROM First_Dots;
+
+
+--Result: 47,264
+--Total rows: 1,065,099
+
+
+--Reduce to earliest dates
+
+DROP TABLE IF EXISTS First_Dots_Reduced CASCADE;
+SELECT t.* INTO First_Dots_Reduced
+FROM First_Dots t
+JOIN 
+( SELECT lat_lon, MIN(byear) minVal
+  FROM First_Dots GROUP BY lat_lon
+) t2
+ON t.byear = t2.minVal AND t.lat_lon = t2.lat_lon;
+
+--Remove old table, rename current to older
+
+DROP TABLE IF EXISTS First_Dots CASCADE;
+
+ALTER TABLE First_Dots_Reduced
+    RENAME TO First_Dots;
+
+
+--Add "13" to table
+
+ALTER TABLE First_Dots
+ADD Pulse_Num integer;
+
+UPDATE First_Dots SET Pulse_Num = 13;
+
+--Join with pulse_num to create pulsation table
+
+--Create "dummy" table, pulse_num
+DROP TABLE IF EXISTS pulse_num_first_dots CASCADE;
+CREATE TABLE pulse_num_first_dots
+(
+num integer,
+pulse integer
+);
+
+copy pulse_num_first_dots from 'D:\largest_family_tree\Queries\dummy_tables\first_dots.csv' delimiter as ',' csv header;
+
+
+--Multiply by pulse table to create pulsation table
+
+DROP TABLE IF EXISTS First_Dots_Pulsation CASCADE;
+SELECT * INTO First_Dots_Pulsation
+FROM
+        First_Dots AS D
+    JOIN
+        pulse_num_first_dots
+            ON pulse_num_first_dots.num <= D.pulse_num;
+
+--Add Type
+
+ALTER TABLE First_Dots_Pulsation
+ADD TYPE character varying(250);
+
+UPDATE First_Dots_Pulsation
+SET TYPE = 'First_Dots';
+
+
+--Add start and end dates
+ALTER TABLE First_Dots_Pulsation
+ADD Start_Date character varying(250);
+
+UPDATE First_Dots_Pulsation SET Start_Date = CONCAT (byear,'-','0',num)
+WHERE num = 1;
+
+UPDATE First_Dots_Pulsation SET Start_Date = CONCAT (byear,'-','04')
+WHERE num = 2;
+
+UPDATE First_Dots_Pulsation SET Start_Date = CONCAT (byear,'-','07')
+WHERE num = 3;
+
+UPDATE First_Dots_Pulsation SET Start_Date = CONCAT (byear,'-','10')
+WHERE num = 4;
+
+UPDATE First_Dots_Pulsation SET Start_Date = CONCAT (byear+1,'-','01')
+WHERE num = 5;
+
+UPDATE First_Dots_Pulsation SET Start_Date = CONCAT (byear+1,'-','04')
+WHERE num = 6;
+
+UPDATE First_Dots_Pulsation SET Start_Date = CONCAT (byear+1,'-','07')
+WHERE num = 7;
+
+UPDATE First_Dots_Pulsation SET Start_Date = CONCAT (byear+1,'-','10')
+WHERE num = 8;
+
+UPDATE First_Dots_Pulsation SET Start_Date = CONCAT (byear+2,'-','01')
+WHERE num = 9;
+
+UPDATE First_Dots_Pulsation SET Start_Date = CONCAT (byear+2,'-','04')
+WHERE num = 10;
+
+UPDATE First_Dots_Pulsation SET Start_Date = CONCAT (byear+2,'-','07')
+WHERE num = 11;
+
+UPDATE First_Dots_Pulsation SET Start_Date = CONCAT (byear,'-','01')
+WHERE num = 12;
+
+UPDATE First_Dots_Pulsation SET Start_Date = CONCAT (byear+1,'-','01')
+WHERE num = 13;
+
+--End_Date
+
+ALTER TABLE First_Dots_Pulsation
+ADD End_Date character varying(250);
+
+UPDATE First_Dots_Pulsation SET End_Date = CONCAT (byear,'-','04')
+WHERE num = 1;
+
+UPDATE First_Dots_Pulsation SET End_Date = CONCAT (byear,'-','07')
+WHERE num = 2;
+
+UPDATE First_Dots_Pulsation SET End_Date = CONCAT (byear,'-','10')
+WHERE num = 3;
+
+UPDATE First_Dots_Pulsation SET End_Date = CONCAT (byear+1,'-','01')
+WHERE num = 4;
+
+UPDATE First_Dots_Pulsation SET End_Date = CONCAT (byear+1,'-','04')
+WHERE num = 5;
+
+UPDATE First_Dots_Pulsation SET End_Date = CONCAT (byear+1,'-','07')
+WHERE num = 6;
+
+UPDATE First_Dots_Pulsation SET End_Date = CONCAT (byear+1,'-','10')
+WHERE num = 7;
+
+UPDATE First_Dots_Pulsation SET End_Date = CONCAT (byear+2,'-','01')
+WHERE num = 8;
+
+UPDATE First_Dots_Pulsation SET End_Date = CONCAT (byear+2,'-','04')
+WHERE num = 9;
+
+UPDATE First_Dots_Pulsation SET End_Date = CONCAT (byear+2,'-','07')
+WHERE num = 10;
+
+--UPDATE First_Dots_Pulsation SET End_Date = CONCAT (byear+2,'-','10')
+--WHERE num = 11;
+
+UPDATE First_Dots_Pulsation SET End_Date = CONCAT (2010,'-','12')
+WHERE num = 11;
+
+UPDATE First_Dots_Pulsation SET End_Date = CONCAT (byear+1,'-','01')
+WHERE num = 12;
+
+UPDATE First_Dots_Pulsation SET End_Date = CONCAT (2010,'-','12')
+WHERE num = 13;
+
+
+
+--Drop extraneous column
+
+ALTER TABLE First_Dots_Pulsation
+DROP COLUMN pulse_num
+RESTRICT;
+
+--Add columns
+ALTER TABLE First_Dots_Pulsation
+ADD yr_start integer,
+ADD yr_end integer;
+
+--Create reordered table
+--Note - removed "sequence"
+DROP TABLE IF EXISTS First_Dots_Pulsation_Reordered CASCADE;
+CREATE TABLE First_Dots_Pulsation_Reordered AS (
+    SELECT id, byear, yr_start, yr_end, start_date, end_date, lat, lon, pulse, type
+    FROM First_Dots_Pulsation GROUP BY id, byear, yr_start, yr_end, start_date, end_date, lat, lon, pulse, type
+);
+
+DROP TABLE IF EXISTS First_Dots_Pulsation_Reordered_Ascending CASCADE;
+SELECT * INTO First_Dots_Pulsation_Reordered_Ascending
+FROM First_Dots_Pulsation
+ORDER BY pulse ASC;
+
+
+
+--Drop table
+DROP TABLE IF EXISTS First_Dots CASCADE;
+DROP TABLE IF EXISTS First_Dots_Pulsation CASCADE;
+DROP TABLE IF EXISTS First_Dots_Pulsation_Reordered CASCADE;
+
+--Reduce columns
+ALTER TABLE First_Dots
+--DROP COLUMN byear,
+DROP COLUMN yr_start,
+DROP COLUMN yr_end
+RESTRICT;
+
+
+--Rename table
+ALTER TABLE First_Dots_Pulsation_Reordered_Ascending
+RENAME TO First_Dots;
+
+
+
+
+
+
+--Create Pulsation table for 1200-2010
+
+DROP TABLE IF EXISTS First_Dots_1200_to_2010_pulsation CASCADE;
+SELECT * INTO First_Dots_1200_to_2010_pulsation
+FROM First_Dots
+
+UPDATE First_Dots_1200_to_2010_pulsation
+SET Start_Date = '1200-01'
+WHERE byear < 1200;
+
+UPDATE First_Dots_1200_to_2010_pulsation
+SET Type = 'Earlier_than_1200'
+WHERE byear < 1200;
+
+UPDATE First_Dots_1200_to_2010_pulsation
+SET Pulse = 33
+WHERE byear < 1200;
+
+DELETE FROM First_Dots_1200_to_2010_pulsation
+WHERE num > 11;
+
+
+
+
+--Create Flashing table for 1600-2010
+
+DROP TABLE IF EXISTS First_Dots_1600_to_2010_flashing CASCADE;
+SELECT * INTO First_Dots_1600_to_2010_flashing
+FROM First_Dots;
+
+--
+
+UPDATE First_Dots_1600_to_2010_flashing
+SET Start_Date = '1600-01'
+WHERE byear < 1600;
+
+UPDATE First_Dots_1600_to_2010_flashing
+SET Type = 'Earlier_than_1600'
+WHERE byear < 1600;
+
+UPDATE First_Dots_1600_to_2010_flashing
+SET Pulse = 10
+WHERE byear < 1600;
+
+DELETE FROM First_Dots_1600_to_2010_flashing
+WHERE num < 12;
+
+--
+
+DROP TABLE IF EXISTS First_Dots_1600_to_2010_flashing_reordered CASCADE;
+SELECT * INTO First_Dots_1600_to_2010_flashing_reordered
+FROM First_Dots_1600_to_2010_flashing
+ORDER BY pulse ASC;
+
+--Drop table
+DROP TABLE IF EXISTS First_Dots_1600_to_2010_flashing CASCADE;
+
+--Rename table
+ALTER TABLE First_Dots_1600_to_2010_flashing_reordered
+RENAME TO First_Dots_1600_to_2010_flashing;
+
+
+
+
+
+
+
+--Create Pulsation table for 1600-2010
+
+DROP TABLE IF EXISTS First_Dots_1600_to_2010_pulsation CASCADE;
+SELECT * INTO First_Dots_1600_to_2010_pulsation
+FROM First_Dots
+ORDER BY pulse ASC;
+
+UPDATE First_Dots_1600_to_2010_pulsation
+SET Start_Date = CONCAT ('1600-01')
+WHERE byear < 1600;
+
+UPDATE First_Dots_1600_to_2010_pulsation
+SET Type = 'Earlier_than_1600'
+WHERE byear < 1600;
+
+UPDATE First_Dots_1600_to_2010_pulsation
+SET Pulse = 33
+WHERE byear < 1600;
+
+DELETE FROM First_Dots_1600_to_2010_pulsation
+WHERE num > 11;
+
+
+
+
+
+
+
+--Create Flashing table for 1200-2010
+
+DROP TABLE IF EXISTS First_Dots_1200_to_2010_flashing CASCADE;
+SELECT * INTO First_Dots_1200_to_2010_flashing
+FROM First_Dots;
+
+--
+
+UPDATE First_Dots_1200_to_2010_flashing
+SET Start_Date = '1200-01'
+WHERE byear < 1200;
+
+UPDATE First_Dots_1200_to_2010_flashing
+SET Type = 'Earlier_than_1200'
+WHERE byear < 1200;
+
+UPDATE First_Dots_1200_to_2010_flashing
+SET Pulse = 10
+WHERE byear < 1200;
+
+DELETE FROM First_Dots_1200_to_2010_flashing
+WHERE num < 12;
+
+--
+
+DROP TABLE IF EXISTS First_Dots_1200_to_2010_flashing_reordered CASCADE;
+SELECT * INTO First_Dots_1200_to_2010_flashing_reordered
+FROM First_Dots_1200_to_2010_flashing
+ORDER BY pulse ASC;
+
+--Drop table
+DROP TABLE IF EXISTS First_Dots_1200_to_2010_flashing CASCADE;
+
+--Rename table
+ALTER TABLE First_Dots_1200_to_2010_flashing_reordered
+RENAME TO First_Dots_1200_to_2010_flashing;
+
+
+
+
+
+
+--Export to CSV
+COPY First_Dots_1200_to_2010_pulsation TO 'D:\First_Dots_1200_to_2010_pulsation.csv' DELIMITER ',' CSV HEADER;
+COPY First_Dots_1200_to_2010_flashing TO 'D:\First_Dots_1200_to_2010_flashing.csv' DELIMITER ',' CSV HEADER;
+COPY First_Dots_1600_to_2010_pulsation TO 'D:\First_Dots_1600_to_2010_pulsation.csv' DELIMITER ',' CSV HEADER;
+COPY First_Dots_1600_to_2010_flashing TO 'D:\First_Dots_1600_to_2010_flashing.csv' DELIMITER ',' CSV HEADER;
+
+
+COPY First_Dots TO 'D:\First_Dots.csv' DELIMITER ',' CSV HEADER;
+
+
+
+
+
+
+
+
+
+
+
+
+--Add Start_Date and End_Date
+
+--Start_Date
+
+ALTER TABLE First_Dots
+ADD Start_Date character varying(250);
+
+UPDATE First_Dots
+SET Start_Date = CONCAT (byear,'-','01');
+
+ALTER TABLE First_Dots
+ADD End_Date character varying(250);
+
+UPDATE First_Dots
+SET End_Date = CONCAT (2010,'-','12');
+
+--Add Pulse
+
+ALTER TABLE First_Dots
+ADD Pulse integer;
+
+UPDATE First_Dots
+SET Pulse = 99;
+
+--Count distinct places
+SELECT COUNT(*) FROM First_Dots;
+
+--Result: 22,213
+
+--Drop extraneous columns
+ALTER TABLE First_Dots
+DROP COLUMN lat_lon
+RESTRICT;
+
+--Add columns and values
+
+ALTER TABLE First_Dots
+ADD yr_start integer,
+ADD yr_end integer
+;
+
+UPDATE First_Dots
+SET yr_start = byear;
+
+UPDATE First_Dots
+SET yr_end = 2010;
+
+--Create reordered table
+
+DROP TABLE IF EXISTS First_Dots_Reordered CASCADE;
+CREATE TABLE First_Dots_Reordered AS (
+    SELECT id, byear, sequence, yr_start, yr_end, start_date, end_date, lat, lon, pulse, type
+    FROM First_Dots GROUP BY id, byear, sequence, yr_start, yr_end, start_date, end_date, lat, lon, pulse, type
+);
+
+--Drop table
+DROP TABLE IF EXISTS First_Dots CASCADE;
+
+--Rename table
+ALTER TABLE First_Dots_Reordered
+RENAME TO First_Dots;
+
+
+
+
+--Export to CSV
+COPY First_Dots TO 'D:\First_Dots.csv' DELIMITER ',' CSV HEADER;
