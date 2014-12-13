@@ -1,0 +1,832 @@
+--Generating Geneology Table
+
+--(1) First, join location, year, and gender (LGY)
+
+----Reduce Location to "Town" and "Zip" in location table
+DROP TABLE IF EXISTS location_reduced CASCADE;
+SELECT *
+INTO location_reduced
+FROM location
+WHERE res IN ('Town', 'Zip');
+
+----Join result to years for LY_Pre (on ID)
+------Labeled "pre" because need to eliminate nulls for final LY table
+DROP TABLE IF EXISTS LY_Pre CASCADE;
+SELECT * INTO LY_Pre
+FROM location_reduced L
+FULL OUTER JOIN years Y using (Id)
+
+----Reduce LY so no nulls
+
+------First reduce by year
+DROP TABLE IF EXISTS LY_half_reduced CASCADE;
+SELECT *
+INTO LY_half_reduced
+FROM LY_Pre
+WHERE byear IS NOT NULL;
+
+------Then reduce by lon; result is final LY table
+DROP TABLE IF EXISTS LY CASCADE;
+SELECT *
+INTO LY
+FROM LY_half_reduced
+WHERE lon IS NOT NULL;
+
+----Delete extraneous tables
+DROP TABLE IF EXISTS LY_Pre CASCADE;
+DROP TABLE IF EXISTS LY_half_reduced CASCADE;
+
+----Join LY  with gender, for LGY (on ID)
+DROP TABLE IF EXISTS LGY CASCADE;
+SELECT * INTO LGY
+FROM LY L
+JOIN gender G using (Id)
+
+
+
+-- (2) Next, join gender with relationship (GR)
+DROP TABLE IF EXISTS GR CASCADE;
+SELECT * INTO GR
+FROM relationship R
+JOIN gender G
+ON R.parent_id = G.id;
+
+
+-- (3) Separate GR by gender (by 1 and 2), for R1 and R2
+----Drop "Gender" columns and
+----rename parent_id columns in R1 and R2 to
+----have "_1" and "_2" at the end of all
+
+---- R1
+DROP TABLE IF EXISTS R1 CASCADE;
+SELECT *
+INTO R1
+FROM GR
+WHERE gender=1;
+
+------Drop Gender and ID columns and change column names for R1
+
+ALTER TABLE R1 DROP COLUMN gender RESTRICT;
+ALTER TABLE R1 DROP COLUMN id RESTRICT;
+
+ALTER TABLE R1 RENAME COLUMN idx TO idx_1;
+ALTER TABLE R1 RENAME COLUMN parent_id TO parent_id_1;
+
+---- R2
+DROP TABLE IF EXISTS R2 CASCADE;
+SELECT *
+INTO R2
+FROM GR
+WHERE gender=2;
+
+------Drop Gender and id columns and change column names for R2
+
+ALTER TABLE R2 DROP COLUMN gender RESTRICT;
+ALTER TABLE R2 DROP COLUMN id RESTRICT;
+
+ALTER TABLE R2 RENAME COLUMN idx TO idx_2;
+ALTER TABLE R2 RENAME COLUMN parent_id TO parent_id_2;
+
+------Need to change child_id so that will join R2,
+------since has same name as R1.
+ALTER TABLE R2 RENAME COLUMN child_id TO child_id_2;
+
+
+-- (4) Join tables
+
+----Join R1 to LGY for LGY_R1
+DROP TABLE IF EXISTS LGY_R1 CASCADE;
+SELECT * INTO LGY_R1
+FROM R1 R
+RIGHT JOIN LGY L
+ON R.child_id = L.id;
+
+/*
+
+------Check nulls
+SELECT COUNT(*) FROM LGY_R1
+WHERE lon IS NULL;
+
+SELECT COUNT(*) FROM LGY_R1
+WHERE parent_id_1 IS NULL;
+
+------ parent_id_1: 277,346 nulls
+------ lon: 0 nulls
+
+*/
+
+
+----Join R2 to LGY_R1 for LGY_R1_R2
+DROP TABLE IF EXISTS LGY_R1_R2 CASCADE;
+SELECT * INTO LGY_R1_R2
+FROM R2 R
+RIGHT JOIN LGY_R1 L
+ON R.child_id_2 = L.id;
+
+/*
+
+------Count rows, check nulls
+
+SELECT COUNT(*) FROM LGY_R1_R2;
+
+SELECT COUNT(*) FROM LGY_R1_R2
+WHERE lon IS NULL;
+
+SELECT COUNT(*) FROM LGY_R1_R2
+WHERE parent_id_1 IS NULL;
+
+SELECT COUNT(*) FROM LGY_R1_R2
+WHERE parent_id_2 IS NULL;
+
+SELECT COUNT(*) FROM LGY_R1_R2
+WHERE(
+parent_id_2,
+parent_id_1
+)
+IS NULL;
+
+-- total rows: 1,072,600
+-- parent_id_1: 278,410 nulls
+-- parent_id_2: 289,901 nulls
+-- both: 259,069
+-- lon: 0 nulls
+
+*/
+
+
+----Drop extraneous columns
+ALTER TABLE LGY_R1_R2 DROP COLUMN child_id RESTRICT;
+ALTER TABLE LGY_R1_R2 DROP COLUMN child_id_2 RESTRICT;
+
+--Create two copies of LY, LY1 and LY2, and
+--rename columns to have "_1" and "_2" at end
+
+
+-- (5) Join LY columns
+
+----LY1
+DROP TABLE IF EXISTS LY1 CASCADE;
+SELECT * INTO LY1 FROM LY;
+
+------Add "_1" at end of all column names of LY1
+ALTER TABLE LY1 RENAME COLUMN id TO id_1;
+ALTER TABLE LY1 RENAME COLUMN lon TO lon_1;
+ALTER TABLE LY1 RENAME COLUMN lat TO lat_1;
+ALTER TABLE LY1 RENAME COLUMN country TO country_1;
+ALTER TABLE LY1 RENAME COLUMN continent TO continent_1;
+ALTER TABLE LY1 RENAME COLUMN res TO res_1;
+ALTER TABLE LY1 RENAME COLUMN byear TO byear_1;
+ALTER TABLE LY1 RENAME COLUMN dyear TO dyear_1;
+
+----LY2
+DROP TABLE IF EXISTS LY2 CASCADE;
+SELECT * INTO LY2 FROM LY;
+
+------change:
+ALTER TABLE LY2 RENAME COLUMN id TO id_2;
+ALTER TABLE LY2 RENAME COLUMN lon TO lon_2;
+ALTER TABLE LY2 RENAME COLUMN lat TO lat_2;
+ALTER TABLE LY2 RENAME COLUMN country TO country_2;
+ALTER TABLE LY2 RENAME COLUMN continent TO continent_2;
+ALTER TABLE LY2 RENAME COLUMN res TO res_2;
+ALTER TABLE LY2 RENAME COLUMN byear TO byear_2;
+ALTER TABLE LY2 RENAME COLUMN dyear TO dyear_2;
+
+
+----Join to LGY-R1-R2 for LGY-R1-R2-LY1-LY2
+----on LY1 and LY2 id and LGY-R1-R2 parent-id_1 and parent_id_2
+
+------First LGY-R1-R2-LY1
+DROP TABLE IF EXISTS LGY_R1_R2_LY1 CASCADE;
+SELECT * INTO LGY_R1_R2_LY1
+FROM LY1 L
+RIGHT JOIN LGY_R1_R2 R
+ON R.parent_id_1 = L.id_1;
+
+------Finally, LGY_R1_R2_LY1_LY2
+DROP TABLE IF EXISTS LGY_R1_R2_LY1_LY2 CASCADE;
+SELECT * INTO LGY_R1_R2_LY1_LY2
+FROM LY2 L
+RIGHT JOIN LGY_R1_R2_LY1 R
+ON R.parent_id_2 = L.id_2;
+
+
+/*
+
+--See non-nulls
+
+SELECT COUNT(*) FROM LGY_R1_R2_LY1_LY2;
+
+SELECT COUNT(*) FROM LGY_R1_R2_LY1_LY2
+WHERE (
+parent_id_1,
+parent_id_2,
+byear_1,
+byear_2,
+lon_1,
+lon_2
+)
+IS NOT NULL;
+
+SELECT COUNT(*) FROM LGY_R1_R2_LY1_LY2
+WHERE parent_id_1 IS NOT NULL;
+
+SELECT COUNT(*) FROM LGY_R1_R2_LY1_LY2
+WHERE parent_id_2 IS NOT NULL;
+
+SELECT COUNT(*) FROM LGY_R1_R2_LY1_LY2
+WHERE byear_1 IS NOT NULL;
+
+SELECT COUNT(*) FROM LGY_R1_R2_LY1_LY2
+WHERE byear_2 IS NOT NULL;
+
+SELECT COUNT(*) FROM LGY_R1_R2_LY1_LY2
+WHERE lon_1 IS NOT NULL;
+
+SELECT COUNT(*) FROM LGY_R1_R2_LY1_LY2
+WHERE lon_2 IS NOT NULL;
+
+--Results:
+--Total Rows: 1,072,600
+--All below: 130,706
+--parent_id_1: 794,190
+--parent_id_2: 782,699
+--byear_1: 371,922
+--byear_2: 198,040
+--lon_1: 371,922
+--lon_2: 198,040
+
+--See byears
+SELECT COUNT(*) FROM LGY_R1_R2_LY1_LY2
+WHERE byear >= 1000;
+
+SELECT COUNT(*) FROM LGY_R1_R2_LY1_LY2
+WHERE byear_1 >= 1000;
+
+SELECT COUNT(*) FROM LGY_R1_R2_LY1_LY2
+WHERE byear_2 >= 1000;
+
+SELECT COUNT(*) FROM LGY_R1_R2_LY1_LY2
+WHERE byear >= 2015;
+
+--1000 and after:
+--byear: 1,070,330
+--byear_1: 371,668
+--byear_2: 197,945
+
+--byear:
+--before 1000: 2,270
+--1000 and after: 1,070,330 (99.8%)
+--after 1100: 1,068,601 (99.8%)
+--1200: 1,065,959 (99.4%)
+--1300: 1,063,064 (99.1%)
+--1400: 1,059,908 (98.8%)
+--1500: 1,054,595 (98.3%)
+--1600: 1,030,493 (96.1%)
+--1700: 915,440 (85.3%)
+--1800: 644,104 (60.1%)
+--1900: 183,769 (17.1%)
+--After 2015: 25
+
+*/
+
+-- (6) Table with children with mother and/or father, LGY_R1_R2_LY1_LY2_Parents
+DROP TABLE IF EXISTS LGY_R1_R2_LY1_LY2_Parents CASCADE;
+SELECT * INTO LGY_R1_R2_LY1_LY2_Parents
+FROM LGY_R1_R2_LY1_LY2
+WHERE byear_1 IS NOT NULL
+OR byear_2 IS NOT NULL;
+
+/*
+--Count rows
+SELECT COUNT(*) FROM LGY_R1_R2_LY1_LY2_Parents;
+
+SELECT COUNT(*) FROM LGY_R1_R2_LY1_LY2_Parents
+WHERE (
+byear_1,
+byear_2
+)
+IS NOT NULL;
+
+--Result: 439,256 rows
+--Both parents: 130,706
+*/
+
+
+--(7) Copy and rename geneology table (LGY_R1_R2_LY1_LY2_Parents) to Gen
+--and alter table
+
+
+----Copy and rename geneology table (LGY_R1_R2_LY1_LY2_Parents) to Gen
+DROP TABLE IF EXISTS Gen CASCADE;
+SELECT * INTO Gen FROM LGY_R1_R2_LY1_LY2_Parents;
+
+
+---- Create column that is latest birth year of parents
+
+------Create column
+ALTER TABLE Gen
+ADD late_yr integer;
+
+------Add latest year
+UPDATE Gen
+SET late_yr = GREATEST(
+byear_1,
+byear_2
+);
+
+----Create column in Gen that is difference
+----between child and late_yr, diff
+
+------ Create column
+ALTER TABLE Gen
+ADD diff integer;
+
+UPDATE Gen
+SET diff = byear-late_yr;
+
+------ Remove rows with diff less than 5 and greater than 100
+
+/*
+
+------Count
+SELECT COUNT(*) FROM Gen
+WHERE diff < 5;
+
+--Total rows: 439,256
+-->100: 348
+--<5: 1786
+
+
+----Backup Original Gen
+DROP TABLE IF EXISTS GEN_Original CASCADE;
+SELECT * INTO GEN_Original FROM Gen;
+
+*/
+
+
+----Delete diff rows
+DELETE FROM Gen
+WHERE diff < 5;
+
+DELETE FROM Gen
+WHERE diff > 100;
+
+----SELECT COUNT(*) FROM Gen;
+----Total rows: 437,128
+
+
+----Create column that is diff x 12 months, tot_mo
+
+ALTER TABLE Gen
+ADD tot_mo integer;
+
+UPDATE Gen
+SET tot_mo = diff*12;
+
+
+----Reduce Gen to just moving transmissions
+
+/*
+
+--First run counts
+SELECT COUNT(*) FROM Gen;
+
+--Just 1
+SELECT COUNT(*) FROM Gen
+WHERE lon<>lon_1;
+
+--Just 2
+SELECT COUNT(*) FROM Gen
+WHERE lon<>lon_2;
+
+--Both
+SELECT COUNT(*) FROM Gen
+WHERE lon<>lon_1
+OR lon<>lon_2;
+
+--Total rows: 437,128
+--Just 1: 142,852
+--Just 2: 84,589
+--Both: 194,819
+
+*/
+
+
+----Create 3 separate tables to rejoin
+
+
+
+ALTER TABLE Gen
+ADD lat_lon character varying(250);
+
+UPDATE Gen
+SET lat_lon = CONCAT (lat,'-',lon);
+
+
+
+ALTER TABLE Gen
+ADD lat_lon_1 character varying(250);
+
+UPDATE Gen
+SET lat_lon_1 = CONCAT (lat_1,'-',lon_1);
+
+
+
+ALTER TABLE Gen
+ADD lat_lon_2 character varying(250);
+
+UPDATE Gen
+SET lat_lon_2 = CONCAT (lat_2,'-',lon_2);
+
+
+
+--Table for joining all of the above
+DROP TABLE IF EXISTS GEN0 CASCADE;
+select * INTO GEN0
+from Gen;
+
+DROP TABLE IF EXISTS GEN1 CASCADE;
+select * INTO GEN1
+from Gen;
+
+
+DROP TABLE IF EXISTS GEN2 CASCADE;
+select * INTO GEN2
+from Gen;
+
+DROP TABLE IF EXISTS Gen_Ids CASCADE;
+select * INTO Gen_Ids
+from Gen;
+
+
+----Create reduced tables
+DELETE FROM Gen1
+WHERE lat_lon=lat_lon_1
+OR id_1 IS NULL;
+
+----227,351 affected
+
+DELETE FROM Gen2
+WHERE lat_lon=lat_lon_2
+OR id_2 IS NULL;
+
+--(1.5)Reduce table 1 to just id and columns for parent 1
+ALTER TABLE GEN1
+DROP COLUMN lat_lon,
+DROP COLUMN lat_lon_1,
+DROP COLUMN lat_lon_2,
+DROP COLUMN id_2,
+DROP COLUMN lon_2,
+DROP COLUMN lat_2,
+DROP COLUMN country_2,
+DROP COLUMN continent_2,
+DROP COLUMN res_2,
+DROP COLUMN byear_2,
+DROP COLUMN dyear_2,
+DROP COLUMN parent_id_2,
+DROP COLUMN idx_2,
+DROP COLUMN lon,
+DROP COLUMN lat,
+DROP COLUMN country,
+DROP COLUMN continent,
+DROP COLUMN res,
+DROP COLUMN byear,
+DROP COLUMN dyear,
+DROP COLUMN gender,
+DROP COLUMN late_yr,
+DROP COLUMN diff,
+DROP COLUMN tot_mo
+RESTRICT;
+
+--(1.6) Reduce table 2 to just id and columns for parent 2
+ALTER TABLE GEN2
+DROP COLUMN lat_lon,
+DROP COLUMN lat_lon_1,
+DROP COLUMN lat_lon_2,
+DROP COLUMN id_1,
+DROP COLUMN lon_1,
+DROP COLUMN lat_1,
+DROP COLUMN country_1,
+DROP COLUMN continent_1,
+DROP COLUMN res_1,
+DROP COLUMN byear_1,
+DROP COLUMN dyear_1,
+DROP COLUMN parent_id_1,
+DROP COLUMN idx_1,
+DROP COLUMN lon,
+DROP COLUMN lat,
+DROP COLUMN country,
+DROP COLUMN continent,
+DROP COLUMN res,
+DROP COLUMN byear,
+DROP COLUMN dyear,
+DROP COLUMN gender,
+DROP COLUMN late_yr,
+DROP COLUMN diff,
+DROP COLUMN tot_mo
+RESTRICT;
+
+--(1.7) Reduce table 1 to just id and columns for children
+ALTER TABLE GEN0
+DROP COLUMN lat_lon,
+DROP COLUMN lat_lon_1,
+DROP COLUMN lat_lon_2,
+DROP COLUMN id_2,
+DROP COLUMN lon_2,
+DROP COLUMN lat_2,
+DROP COLUMN country_2,
+DROP COLUMN continent_2,
+DROP COLUMN res_2,
+DROP COLUMN byear_2,
+DROP COLUMN dyear_2,
+DROP COLUMN parent_id_2,
+DROP COLUMN idx_2,
+DROP COLUMN id_1,
+DROP COLUMN lon_1,
+DROP COLUMN lat_1,
+DROP COLUMN country_1,
+DROP COLUMN continent_1,
+DROP COLUMN res_1,
+DROP COLUMN byear_1,
+DROP COLUMN dyear_1,
+DROP COLUMN parent_id_1,
+DROP COLUMN idx_1
+RESTRICT;
+
+--(1.8) Reduce Id table to just IDs
+ALTER TABLE Gen_Ids
+DROP COLUMN lat_lon,
+DROP COLUMN lat_lon_1,
+DROP COLUMN lat_lon_2,
+DROP COLUMN id_2,
+DROP COLUMN lon_2,
+DROP COLUMN lat_2,
+DROP COLUMN country_2,
+DROP COLUMN continent_2,
+DROP COLUMN res_2,
+DROP COLUMN byear_2,
+DROP COLUMN dyear_2,
+DROP COLUMN parent_id_2,
+DROP COLUMN idx_2,
+DROP COLUMN id_1,
+DROP COLUMN lon_1,
+DROP COLUMN lat_1,
+DROP COLUMN country_1,
+DROP COLUMN continent_1,
+DROP COLUMN res_1,
+DROP COLUMN byear_1,
+DROP COLUMN dyear_1,
+DROP COLUMN parent_id_1,
+DROP COLUMN idx_1,
+DROP COLUMN lon,
+DROP COLUMN lat,
+DROP COLUMN country,
+DROP COLUMN continent,
+DROP COLUMN res,
+DROP COLUMN byear,
+DROP COLUMN dyear,
+DROP COLUMN gender,
+DROP COLUMN late_yr,
+DROP COLUMN diff,
+DROP COLUMN tot_mo
+RESTRICT;
+
+
+
+
+--(1.9) Full Join table 1 with Gen IDs
+DROP TABLE IF EXISTS Gen_first_merge CASCADE;
+SELECT * INTO Gen_first_merge
+FROM GEN1 G
+FULL OUTER JOIN GEN2 P using (Id);
+
+--(1.10) Full Join Result with table 2
+DROP TABLE IF EXISTS Gen_second_merge CASCADE;
+SELECT * INTO Gen_second_merge
+FROM GEN0 G
+JOIN Gen_first_merge P using (Id);
+
+
+--Rename back to Gen
+
+ALTER TABLE Gen
+RENAME TO Gen_Original;
+
+ALTER TABLE Gen_second_merge
+RENAME TO Gen;
+
+
+--Count
+
+SELECT COUNT(*) FROM Gen_Original;
+
+SELECT COUNT(*) FROM Gen;
+
+SELECT COUNT(*) FROM Gen
+WHERE lat_1 IS NULL
+AND lat_2 IS NULL;
+
+--437640
+--195030
+--0
+
+
+----------------Left off here last....
+----Gen should have nulls for lat, but
+
+--Delete nulls
+DELETE FROM Gen
+WHERE lat IS NULL;
+
+
+
+/*
+
+
+
+DROP TABLE IF EXISTS GEN1 CASCADE;
+SELECT * INTO GEN1 FROM Gen;
+
+DROP TABLE IF EXISTS GEN2 CASCADE;
+SELECT * INTO GEN2 FROM Gen;
+
+ALTER TABLE GEN1
+DROP COLUMN id_2,
+DROP COLUMN lon_2,
+DROP COLUMN lat_2,
+DROP COLUMN country_2,
+DROP COLUMN continent_2,
+DROP COLUMN res_2,
+DROP COLUMN byear_2,
+DROP COLUMN dyear_2,
+DROP COLUMN idx_2,
+DROP COLUMN parent_id_2
+RESTRICT;
+
+ALTER TABLE GEN2
+DROP COLUMN id_1,
+DROP COLUMN lon_1,
+DROP COLUMN lat_1,
+DROP COLUMN country_1,
+DROP COLUMN continent_1,
+DROP COLUMN res_1,
+DROP COLUMN byear_1,
+DROP COLUMN dyear_1,
+DROP COLUMN idx_1,
+DROP COLUMN parent_id_1,
+DROP COLUMN lat,
+DROP COLUMN country,
+DROP COLUMN continent,
+DROP COLUMN res,
+DROP COLUMN byear,
+DROP COLUMN dyear,
+DROP COLUMN gender,
+DROP COLUMN late_yr,
+DROP COLUMN diff,
+DROP COLUMN tot_mo
+RESTRICT;
+
+
+
+----Create reduced tables
+DELETE FROM Gen1
+WHERE lon=lon_1
+OR id_1 IS NULL;
+
+----227,351 affected
+
+DELETE FROM Gen2
+WHERE lon=lon_2
+OR id_2 IS NULL;
+
+----112,347 affected
+
+/*
+
+--Reduce to eliminate same transmissions
+
+ALTER TABLE Gen1
+ADD concat character varying(250);
+
+UPDATE Gen1 SET concat = CONCAT (lon,lat,byear,lon_1,lat_1,byear_1);
+
+--First run counts before reducing
+SELECT COUNT(DISTINCT CONCAT) FROM Gen1;
+
+SELECT COUNT(*) FROM Gen1;
+
+--Results: 142,852
+--Distinct: 138,475
+
+--Too few that are non-distinct (3%) to warrant separating
+
+*/
+
+/*
+
+----Drop Lon column from Gen2
+ALTER TABLE GEN2
+DROP COLUMN lon
+RESTRICT;
+
+----Rejoin table
+DROP TABLE IF EXISTS Gen_Rejoin CASCADE;
+SELECT * INTO Gen_Rejoin
+FROM Gen1 G
+FULL OUTER JOIN Gen2 T using (Id)
+
+*/
+
+/*
+
+--Run counts
+SELECT COUNT(*) FROM Gen_Rejoin;
+
+--Result: 194,819
+
+SELECT COUNT(*) FROM Gen_Rejoin
+WHERE lon<>lon_1
+OR lon<>lon_2;
+
+--Result: 142,852
+
+*/
+
+/*
+
+----Remove extraneous tables, old gen table, rename rejoin
+
+DROP TABLE IF EXISTS Gen1 CASCADE;
+DROP TABLE IF EXISTS Gen2 CASCADE;
+
+DROP TABLE IF EXISTS Gen CASCADE;
+
+ALTER TABLE Gen_Rejoin
+RENAME TO Gen;
+
+
+
+*/
+
+
+
+
+
+
+
+----Add row number based on byear
+
+ALTER TABLE Gen
+ADD sequence integer;
+
+UPDATE Gen
+SET sequence = SubQuery.Sort_Order
+FROM
+    (
+    SELECT ID, Row_Number() OVER (ORDER BY byear) as SORT_ORDER
+    FROM Gen
+    ) SubQuery
+where SubQuery.ID = Gen.ID
+
+--437,128 rows affected, 16636 ms execution time
+
+
+
+--(8) For next set of queries, Create "dummy" table, Num
+--Create "dummy" table, Num
+
+DROP TABLE IF EXISTS num CASCADE;
+CREATE TABLE num
+(
+number integer
+);
+
+copy num from 'D:\largest_family_tree\Queries\dummy_tables\num.csv' delimiter as ',' csv header;
+
+ALTER TABLE num RENAME COLUMN number TO mos;
+
+
+
+-- (9) Drop All Tables but Gen and Num
+
+DROP TABLE IF EXISTS location_reduced CASCADE;
+DROP TABLE IF EXISTS LY_Pre CASCADE;
+DROP TABLE IF EXISTS LY_half_reduced CASCADE;
+DROP TABLE IF EXISTS LY CASCADE;
+DROP TABLE IF EXISTS LY_Pre CASCADE;
+DROP TABLE IF EXISTS LY_half_reduced CASCADE;
+DROP TABLE IF EXISTS LGY CASCADE;
+DROP TABLE IF EXISTS GR CASCADE;
+DROP TABLE IF EXISTS R1 CASCADE;
+DROP TABLE IF EXISTS R2 CASCADE;
+DROP TABLE IF EXISTS LGY_R1 CASCADE;
+DROP TABLE IF EXISTS LGY_R1_R2 CASCADE;
+DROP TABLE IF EXISTS LY1 CASCADE;
+DROP TABLE IF EXISTS LY2 CASCADE;
+DROP TABLE IF EXISTS LGY_R1_R2_LY1 CASCADE;
+DROP TABLE IF EXISTS LGY_R1_R2_LY1_LY2 CASCADE;
+DROP TABLE IF EXISTS LGY_R1_R2_LY1_LY2_Parents CASCADE;
+DROP TABLE IF EXISTS GEN1 CASCADE;
+DROP TABLE IF EXISTS GEN2 CASCADE;
+DROP TABLE IF EXISTS Gen_Rejoin CASCADE;
