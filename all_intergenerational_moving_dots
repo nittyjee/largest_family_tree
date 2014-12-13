@@ -1,0 +1,765 @@
+--For revisions, copy-paste everything below in another table and change the following:
+
+/*
+
+Gen
+Gen
+
+Transmission_All
+Transmission_All
+
+Transmission_All_Reduced
+Transmission_All_Reduced
+
+Transmission1_to_merge
+Transmission1_to_merge
+
+Transmission2_to_merge
+Transmission2_to_merge
+
+*/
+
+
+
+-- (2) Generate table by months and manipulate
+
+--(2.1) Multiply by months between birthdate of youngest parent and birthdate of children
+DROP TABLE IF EXISTS Transmission_All CASCADE;
+SELECT * INTO Transmission_All
+FROM
+        Gen AS I
+    JOIN
+        num
+            ON num.mos <= I.tot_mo
+
+--Result: 56,218,008 rows affected, 176916 ms execution time
+--Result: 74,945,748 rows affected, 216065 ms execution time
+
+--(2.2) Add YR Column to Transmission_All
+
+--(2.2.1) Add Start_Date and End_Date
+ALTER TABLE Transmission_All
+ADD YR_num_start FLOAT;
+
+ALTER TABLE Transmission_All
+ADD YR_num_end FLOAT;
+
+--(2.2.2) Divide by 12 for year
+UPDATE Transmission_All SET YR_num_start = (mos-1)/12;
+UPDATE Transmission_All SET YR_num_end = (mos)/12;
+
+--56218008 rows affected,
+--3138325 ms execution time = 52 mins
+--74,945,748 rows affected, 6467846 ms execution time
+
+/*
+
+--This appears to have ended up being unnecessary - the field type
+--"integer" made this round down anyway
+
+--Round down
+--Add YR_Num column
+ALTER TABLE Transmission_All
+ADD YR_Num_Start integer;
+
+ALTER TABLE Transmission_All
+ADD YR_Num_End integer;
+
+
+
+UPDATE Transmission_All SET YR_Num_Start = FLOOR(YR_temp_start);
+UPDATE Transmission_All SET YR_Num_End = FLOOR(YR_temp_end);
+
+*/
+
+
+--(2.2.3) Create year column - add YR_Num to late_yr
+ALTER TABLE Transmission_All
+ADD YR_Start integer;
+
+ALTER TABLE Transmission_All
+ADD YR_End integer;
+
+UPDATE Transmission_All SET YR_Start = late_yr + YR_Num_Start;
+UPDATE Transmission_All SET YR_End = late_yr + YR_Num_End;
+
+--56218008 rows affected, 4668936 ms execution time = 78 mins
+--74945748 rows affected, 10030085 ms execution time = 167 mins
+
+
+--(2.2.4) Create MO_Start and MO_End
+
+ALTER TABLE Transmission_All
+ADD MO_Start integer;
+
+ALTER TABLE Transmission_All
+ADD MO_End integer;
+
+UPDATE Transmission_All SET MO_Start = mos-(YR_Num_Start*12);
+UPDATE Transmission_All SET MO_End = (mos+1)-(YR_Num_End*12);
+
+--56218008 rows affected, 5639210 ms execution time = 94 mins
+--74945748 rows affected, 9289524 ms execution time = 155 mins
+
+--(2.2.5) Start_Date
+ALTER TABLE Transmission_All
+ADD Start_Date character varying(250);
+
+UPDATE Transmission_All SET Start_Date = CONCAT (YR_Start,'-','0',MO_Start)
+WHERE
+MO_Start = 1 OR
+MO_Start = 2 OR
+MO_Start = 3 OR
+MO_Start = 4 OR
+MO_Start = 5 OR
+MO_Start = 6 OR
+MO_Start = 7 OR
+MO_Start = 8 OR
+MO_Start = 9;
+
+UPDATE Transmission_All SET Start_Date = CONCAT (YR_Start,'-',MO_Start)
+WHERE
+MO_Start = 10 OR
+MO_Start = 11 OR
+MO_Start = 12;
+
+--14054502 rows affected, 5356528 ms execution time = 90 mins'
+--18736437 rows affected, 8483913 ms execution time = 141 mins
+
+--(2.2.6) End_Date
+
+ALTER TABLE Transmission_All
+ADD End_Date character varying(250);
+
+UPDATE Transmission_All SET End_Date = CONCAT (YR_End,'-','0',MO_End)
+WHERE
+MO_End = 1 OR
+MO_End = 2 OR
+MO_End = 3 OR
+MO_End = 4 OR
+MO_End = 5 OR
+MO_End = 6 OR
+MO_End = 7 OR
+MO_End = 8 OR
+MO_End = 9;
+
+UPDATE Transmission_All SET End_Date = CONCAT (YR_End,'-',MO_End)
+WHERE
+MO_End = 10 OR
+MO_End = 11 OR
+MO_End = 12;
+
+--14054502 rows affected, 4651326 ms execution time = 78 mins
+--Note: switched to external drive for this query and afterwards
+--18736437 rows affected, 8991946 ms execution time = 150 mins
+
+
+--(2.3) Create lat/lon for each
+
+--(2.3.1) lon add and lat add
+
+ALTER TABLE Transmission_All
+ADD LAT1_ADD float(4),
+ADD LON1_ADD float(4),
+ADD LAT2_ADD float(4),
+ADD LON2_ADD float(4)
+;
+
+UPDATE Transmission_All set LAT1_ADD = (LAT-LAT_1)/tot_mo;
+UPDATE Transmission_All set LAT2_ADD = (LAT-LAT_2)/tot_mo;
+UPDATE Transmission_All set LON1_ADD = (LON-LON_1)/tot_mo;
+UPDATE Transmission_All set LON2_ADD = (LON-LON_2)/tot_mo;
+
+--56218008 rows affected, 14207019 ms execution time = 237 mins
+--74945748 rows affected, 20147722 ms execution time = 336 mins
+
+--(2.3.2) Add lat/lon
+ALTER TABLE Transmission_All
+ADD LAT1 float(4),
+ADD LON1 float(4),
+ADD LAT2 float(4),
+ADD LON2 float(4)
+;
+
+UPDATE Transmission_All SET LAT1 = LAT_1+(mos*LAT1_ADD);
+--74945748 rows affected, 7528965 ms execution time = 125 mins
+UPDATE Transmission_All SET LON1 = LON_1+(mos*LON1_ADD);
+UPDATE Transmission_All SET LAT2 = LAT_2+(mos*LAT2_ADD);
+UPDATE Transmission_All SET LON2 = LON_2+(mos*LON2_ADD);
+
+--56218008 rows affected, 19123801 ms execution time = 319 mins
+--74945748 rows affected, 19700579 ms execution time = 328 mins
+
+--(2.4) Create table that is reduced to just start and end dates and lat/lon
+
+DROP TABLE IF EXISTS Transmission_All_Reduced CASCADE;
+SELECT * INTO Transmission_All_Reduced
+FROM Transmission_All;
+
+--74945748 rows affected, 5951856 ms execution time = 99 mins
+
+ALTER TABLE Transmission_All_Reduced
+--DROP COLUMN sequence,
+DROP COLUMN id_2,
+DROP COLUMN lon_2,
+DROP COLUMN lat_2,
+--DROP COLUMN country_2,
+DROP COLUMN continent_2,
+DROP COLUMN res_2,
+DROP COLUMN byear_2,
+DROP COLUMN dyear_2,
+DROP COLUMN id_1,
+DROP COLUMN lon_1,
+DROP COLUMN lat_1,
+--DROP COLUMN country_1,
+DROP COLUMN continent_1,
+DROP COLUMN res_1,
+DROP COLUMN byear_1,
+DROP COLUMN dyear_1,
+DROP COLUMN idx_2,
+DROP COLUMN parent_id_2,
+DROP COLUMN idx_1,
+DROP COLUMN parent_id_1,
+DROP COLUMN lon,
+DROP COLUMN lat,
+DROP COLUMN country,
+DROP COLUMN continent,
+DROP COLUMN res,
+--DROP COLUMN byear,
+DROP COLUMN dyear,
+DROP COLUMN gender,
+DROP COLUMN late_yr,
+DROP COLUMN diff,
+DROP COLUMN tot_mo,
+DROP COLUMN mos,
+--DROP COLUMN yr_temp_start,
+--DROP COLUMN yr_temp_end,
+DROP COLUMN yr_num_start,
+DROP COLUMN yr_num_end,
+--DROP COLUMN yr_start,
+--DROP COLUMN yr_end,
+DROP COLUMN mo_start,
+DROP COLUMN mo_end,
+DROP COLUMN lat1_add,
+DROP COLUMN lon1_add,
+DROP COLUMN lat2_add,
+DROP COLUMN lon2_add
+RESTRICT;
+
+--Do some sanity checks
+SELECT MIN(sequence), MAX(sequence) max FROM Gen;
+
+--1456346 ms = 24 mins
+--1;195030
+
+--Run Count on Transmission_All_Reduced
+SELECT COUNT(*) FROM Gen;
+
+--Results: 161,676
+
+
+
+
+
+
+--(3) Create final tables - 2 transmissions for each parent, 2 pulsations for each parent
+
+--(3.1) Separate lat1/lon2 and lat2/lon2
+
+--Did both simultaneously
+--lat1/lon1
+
+DROP TABLE IF EXISTS Transmission1_All_to_merge CASCADE;
+SELECT * INTO Transmission1_All_to_merge
+FROM Transmission_All_Reduced;
+
+--lat2/lon2
+
+DROP TABLE IF EXISTS Transmission2_All_to_merge CASCADE;
+SELECT * INTO Transmission2_All_to_merge
+FROM Transmission_All_Reduced;
+
+--For both simultaneous:
+--74945748 rows affected, 1157517 ms execution time = 19 mins
+
+--Drop columns
+
+ALTER TABLE Transmission2_All_to_merge
+DROP COLUMN lon1,
+DROP COLUMN lat1
+RESTRICT;
+
+ALTER TABLE Transmission1_All_to_merge
+DROP COLUMN lon2,
+DROP COLUMN lat2
+RESTRICT;
+
+--(3.2) Add columns to transmission tables and rename, delete nulls,
+--parents not from italy, and rows outside date range, and drop extraneous columns
+
+
+--Did both of following simultaneously
+
+--Add columns to Transmission1_to_merge
+
+ALTER TABLE Transmission1_All_to_merge
+ADD pulse integer,
+ADD type character varying(250);
+
+--Add columns to Transmission2_to_merge
+
+ALTER TABLE Transmission2_All_to_merge
+ADD pulse integer,
+ADD type character varying(250);
+
+--Add values simultaneously
+
+UPDATE Transmission2_All_to_merge SET type = 'Transmission';
+UPDATE Transmission2_All_to_merge SET pulse = 1;
+
+UPDATE Transmission1_All_to_merge SET type = 'Transmission';
+UPDATE Transmission1_All_to_merge SET pulse = 1;
+
+--74945748 rows affected, 8590380 ms execution time = 143 mins
+
+--Rename columns
+
+ALTER TABLE Transmission1_All_to_merge RENAME COLUMN lat1 TO lat;
+ALTER TABLE Transmission1_All_to_merge RENAME COLUMN lon1 TO lon;
+ALTER TABLE Transmission2_All_to_merge RENAME COLUMN lat2 TO lat;
+ALTER TABLE Transmission2_All_to_merge RENAME COLUMN lon2 TO lon;
+
+--Deleted nulls and byears outside range simultaneously
+
+--Eliminate nulls
+
+DELETE FROM Transmission2_All_to_merge
+WHERE lat IS NULL;
+
+DELETE FROM Transmission1_All_to_merge
+WHERE lat IS NULL;
+
+--0 rows affected, 2172229 ms execution time = 36 mins
+
+/*
+--Eliminate where Mother or Father do not originate in Italy
+
+DELETE FROM Transmission2_to_merge
+WHERE country_2 <> 'IT';
+
+DELETE FROM Transmission1_to_merge
+WHERE country_1 <> 'IT';
+
+*/
+
+--Delete everything not between 1200-2010
+
+DELETE FROM Transmission2_All_to_merge
+WHERE byear < 1200
+OR byear > 2010;
+
+DELETE FROM Transmission1_All_to_merge
+WHERE byear < 1200
+OR byear > 2010;
+
+--32916 rows affected, 540635 ms execution time = 9 mins
+
+--Simultaneous time:
+--32916 rows affected, 4497636 ms execution time = 75 mins
+
+--Drop Extraneous columns
+
+ALTER TABLE Transmission1_All_to_merge
+DROP COLUMN country_1,
+DROP COLUMN country_2
+RESTRICT;
+
+ALTER TABLE Transmission2_All_to_merge
+DROP COLUMN country_1,
+DROP COLUMN country_2
+RESTRICT;
+
+
+
+-- Create csv file
+
+/*
+--Old Query
+
+-- Create csv file
+COPY Transmission1_All_to_merge TO 'D:\Transmission1_All_to_merge.csv' DELIMITER ',' CSV HEADER;
+
+-- Create csv file
+COPY Transmission2_All_to_merge TO 'D:\Transmission2_All_to_merge.csv' DELIMITER ',' CSV HEADER;
+
+--11650332 rows affected, 1050593 ms execution time = 18 mins
+
+*/
+
+
+DROP TABLE IF EXISTS Transmission_All_Merged CASCADE;
+SELECT *
+INTO Transmission_All_Merged
+FROM
+	First_Dots
+UNION ALL
+SELECT *
+FROM
+	Transmission1_All_to_merge
+UNION ALL
+SELECT *
+FROM
+	Transmission2_All_to_merge
+UNION ALL
+SELECT *
+FROM
+	Pulsation_Reordered
+	;
+
+--86765577 rows affected, 2627070 ms execution time = 44 mins
+
+
+-- Create csv file backup
+COPY Transmission_All_Merged TO 'D:\Transmission_All_Merged.csv' DELIMITER ',' CSV HEADER;
+
+
+
+
+
+
+
+--
+
+
+--Divide by 10 for each, and then divide up by yr_start
+
+1-19,503
+--1713
+--1200-1712
+
+19503-39006
+--1758
+--1713-1758
+
+39007-58509
+--1794
+--1759-1794
+
+58508-78012
+--1825
+--1795-1825
+
+78013-97515
+--1849
+--1826-1849
+
+97516-117018
+--1868
+--1850-1868
+
+117019-136521
+--1885
+--1869-1885
+
+13652-156024
+--1901
+--1886-1901
+
+156025-175527
+--1925
+--1902-1925
+
+175528-195,030
+--2010
+--1926-2010
+
+
+--1 sec for every 10 years means must be divisible by 10
+
+1-19,503
+--1713
+--1200-1710
+
+19503-39006
+--1758
+--1710-1760
+
+39007-58509
+--1794
+--1760-1800
+
+58508-78012
+--1825
+--1800-1830
+
+78013-97515
+--1849
+--1830-1850
+
+97516-117018
+--1868
+--1850-1870
+
+117019-136521
+--1885
+--1870-1890
+
+13652-156024
+--1901
+--1890-1900
+
+156025-175527
+--1925
+--1900-1930
+
+175528-195,030
+--2010
+--1930-2010
+
+
+
+--1200-1710
+--1710-1760
+--1760-1800
+--1800-1830
+--1830-1850
+--1850-1870
+--1870-1890
+--1890-1900
+--1900-1930
+--1930-2010
+
+
+
+--Divide by 5 instead of 10:
+--1200-1760
+--1760-1830
+--1830-1870
+--1870-1900
+--1900-2010
+
+
+-- Add sorting numbers so animation plays in sequence
+
+ALTER TABLE Transmission_All_Merged
+ADD ugh integer;
+
+
+UPDATE Transmission_All_Merged SET ugh = 1
+WHERE TYPE = 'First_Dots';
+
+UPDATE Transmission_All_Merged SET ugh = 2
+WHERE TYPE = 'Transmission';
+
+UPDATE Transmission_All_Merged SET ugh = 3
+WHERE TYPE = 'Pulsation';
+
+
+
+--1870-1880
+
+DROP TABLE IF EXISTS Transmission_1870_to_1880 CASCADE;
+SELECT * INTO Transmission_1870_to_1880
+FROM Transmission_All_Merged
+WHERE yr_start >= 1870
+AND yr_start <= 1880
+OR type = 'First_Dots'
+AND yr_start >= 1870;
+
+--Change first dots date ranges
+UPDATE Transmission_1870_to_1880 SET start_date = '1870-01'
+WHERE type = 'First_Dots'
+AND yr_start < 1870;
+
+UPDATE Transmission_1870_to_1880 SET end_date = '1880-12'
+WHERE type = 'First_Dots';
+
+DELETE FROM Transmission_1870_to_1880
+WHERE yr_start > 1880
+AND type = 'First_Dots';
+
+
+--Create reordered table
+
+DROP TABLE IF EXISTS Transmission_1870_to_1880_Reduced_Reordered CASCADE;
+SELECT * INTO Transmission_1870_to_1880_Reduced_Reordered
+FROM Transmission_1870_to_1880
+ORDER BY ugh ASC;
+
+ALTER TABLE Transmission_1870_to_1880_Reduced_Reordered
+DROP COLUMN sequence,
+DROP COLUMN id,
+DROP COLUMN byear,
+DROP COLUMN yr_start,
+DROP COLUMN yr_end,
+DROP COLUMN type,
+DROP COLUMN ugh
+RESTRICT;
+
+
+COPY Transmission_1870_to_1880_Reduced_Reordered TO 'D:\Transmission_1870_to_1880_Reduced_Reordered.csv' DELIMITER ',' CSV HEADER;
+
+COPY Transmission_1870_to_1880 TO 'D:\Transmission_1870_to_1880.csv' DELIMITER ',' CSV HEADER;
+
+
+
+SELECT COUNT(*) FROM Transmission_1870_to_1880
+WHERE type = 'Pulsation';
+
+
+
+
+
+
+--Appears to be a problem, checking on things...
+
+DROP TABLE IF EXISTS checking CASCADE;
+
+CREATE TABLE checking
+(
+start_date character varying (250),
+end_date character varying (250),
+lat float,
+lon float,
+pulse integer
+);
+
+copy checking from 'D:\largest_family_tree\Mapping\all_transmissions\Transmission_1200_to_1710\csv\Transmission_1200_to_1710_Reduced_Reordered.csv' delimiter as ',' csv header;
+
+--Everthing checks fine... problem is with shapefile...
+
+
+--1760-1830
+--1830-1870
+--1870-1900
+--1900-2010
+
+
+--1886-1901
+
+
+--debugging
+ALTER TABLE Transmission_1200_to_1710_Reduced_Reordered
+ADD date2 character varying (250);
+
+
+UPDATE Transmission_1200_to_1710_Reduced_Reordered SET date2 = LEFT(start_date,4);
+
+
+
+
+
+
+
+
+
+
+
+--Reduce further
+DROP TABLE IF EXISTS Transmission_All_Merged_Reduced CASCADE;
+SELECT * INTO Transmission_All_Merged_Reduced
+FROM Transmission_All_Merged
+
+
+ALTER TABLE Transmission_1886_to_1901_Reduced_Further
+DROP COLUMN sequence,
+DROP COLUMN id,
+DROP COLUMN byear,
+DROP COLUMN yr_start,
+DROP COLUMN yr_end,
+DROP COLUMN type
+RESTRICT;
+
+--86765577 rows affected, 1293621 ms execution time = 22 mins
+
+--7.76 GB
+--x 40 = 310 GB
+
+--Try 1/10th = 30 GB
+--195030 / 10 = 19,503
+
+
+--8312531 rows affected, 262804 ms execution time
+
+
+
+
+
+-- Create csv file
+COPY Transmission_1886_to_1901 TO 'D:\Transmission_1886_to_1901.csv' DELIMITER ',' CSV HEADER;
+
+
+--Some debugging / sanity checks
+
+SELECT COUNT(*) FROM Transmission_1886_to_1901
+WHERE LAT < -90
+OR LAT > 90
+OR LON < -180
+OR LON >180;
+
+SELECT COUNT(*) FROM Transmission_1886_to_1901
+WHERE Pulse = 99;
+
+copy Transmission_1886_to_1901_check from 'D:\largest_family_tree\Mapping\all_transmissions\csv\Transmission_1886_to_1901.csv' delimiter as ',' csv header;
+
+--sanity check
+SELECT COUNT(*) FROM Transmission_1886_to_1901_check
+WHERE Pulse = 7;
+
+--Reduce further
+DROP TABLE IF EXISTS Transmission_1886_to_1901_Reduced_Further CASCADE;
+SELECT * INTO Transmission_1886_to_1901_Reduced_Further
+FROM Transmission_1886_to_1901
+
+
+ALTER TABLE Transmission_1886_to_1901_Reduced_Further
+DROP COLUMN sequence,
+DROP COLUMN id,
+DROP COLUMN byear,
+DROP COLUMN yr_start,
+DROP COLUMN yr_end,
+DROP COLUMN type
+RESTRICT;
+
+COPY Transmission_1886_to_1901_Reduced_Further TO 'D:\Transmission_1886_to_1901_Reduced_Further.csv' DELIMITER ',' CSV HEADER;
+
+
+
+
+
+
+
+
+
+--Csv check
+DROP TABLE IF EXISTS csv_check CASCADE;
+
+CREATE TABLE csv_check
+(
+X float,
+Y float,
+Start_Date character varying (250),
+End_Date character varying (250),
+lat float,
+lon float,
+pulse integer
+);
+
+copy csv_check from 'D:\csv_check\csv_check.csv' delimiter as ',' csv header;
+
+SELECT COUNT(*) FROM csv_check;
+--11,271,540
+
+SELECT COUNT(*) FROM csv_check
+WHERE pulse IS NULL;
+--
+
+SELECT COUNT(*) FROM csv_check
+WHERE pulse = 0;
+--
+
+SELECT COUNT(*) FROM Transmission_1200_to_1710_Reduced_Reordered;
+--11,271,540
+
+
+WHERE Pulse = 99;
