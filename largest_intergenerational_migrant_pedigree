@@ -1,0 +1,542 @@
+--Find parents with most children
+
+--Count rows
+SELECT COUNT(*) FROM relationship;
+
+--Results: 51,811,931
+
+--Create table that is relationships of only transmissions
+
+--Create table with transmissions with only IDs for joining relationships to
+DROP TABLE IF EXISTS Gen_ID CASCADE;
+SELECT * INTO Gen_ID
+FROM Gen;
+
+ALTER TABLE Gen_ID
+DROP COLUMN id_2,
+DROP COLUMN lon_2,
+DROP COLUMN lat_2,
+DROP COLUMN country_2,
+DROP COLUMN continent_2,
+DROP COLUMN res_2,
+DROP COLUMN byear_2,
+DROP COLUMN dyear_2,
+DROP COLUMN id_1,
+DROP COLUMN lon_1,
+DROP COLUMN lat_1,
+DROP COLUMN country_1,
+DROP COLUMN continent_1,
+DROP COLUMN res_1,
+DROP COLUMN byear_1,
+DROP COLUMN dyear_1,
+DROP COLUMN idx_2,
+DROP COLUMN parent_id_2,
+DROP COLUMN idx_1,
+DROP COLUMN parent_id_1,
+DROP COLUMN lon,
+DROP COLUMN lat,
+DROP COLUMN country,
+DROP COLUMN continent,
+DROP COLUMN res,
+DROP COLUMN byear,
+DROP COLUMN dyear,
+DROP COLUMN gender,
+DROP COLUMN late_yr,
+DROP COLUMN diff,
+DROP COLUMN tot_mo
+RESTRICT;
+
+--Join Gen_ID with Relationship
+DROP TABLE IF EXISTS Relationship_Transmissions CASCADE;
+SELECT * INTO Relationship_Transmissions
+FROM Gen_ID G
+JOIN relationship R
+ON R.child_id = G.id;;
+
+--Results: 383789 rows affected, 2068105 ms execution time
+
+
+--Create a table that shows the number of children for each parent
+--in the relationship_transmissions table
+
+
+--Create table with number of children for each parent
+
+WITH RECURSIVE tree (child_id, parent_id, cnt) AS (
+	-- start from bottom-level entries
+	SELECT child_id, parent_id, 0::bigint AS cnt
+	FROM Relationship_Transmissions t
+	WHERE NOT EXISTS (
+		SELECT child_id
+		FROM Relationship_Transmissions
+		WHERE parent_id = t.child_id
+	)
+	
+	UNION ALL
+	
+	SELECT t.child_id, t.parent_id, tree.cnt + (
+			SELECT count(child_id) 
+			FROM Relationship_Transmissions 
+			WHERE parent_id = t.child_id
+		)
+	FROM Relationship_Transmissions t JOIN tree ON t.child_id = tree.parent_id
+)
+SELECT tree.child_id, max(tree.cnt) AS number_of_children
+INTO Number_of_Children
+FROM tree 
+--JOIN Relationship_Transmissions ON tree.child_id = Relationship_Transmissions.child_id 
+--WHERE parent_id IS NULL
+GROUP BY tree.child_id
+ORDER BY tree.child_id
+;
+
+--194765 rows affected, 6347972 ms execution time = 106 mins
+
+
+--Reduce number of children table to having only parents with children
+SELECT * INTO Number_Children_Reduced
+FROM Number_of_Children
+WHERE number_of_children >= 1;
+
+--As the resulting table does not have the children of parents that don't have children,
+--will need to join the table to the relationship table,
+--and then copy the result, reduce columns, and merge
+
+
+--Rename column so it will join
+ALTER TABLE Number_Children_Reduced RENAME COLUMN child_id TO child_id_2;
+
+DROP TABLE IF EXISTS Number_Children_Reduced_Joined_Children CASCADE;
+SELECT * INTO Number_Children_Reduced_Joined_Children
+FROM Number_Children_Reduced G
+JOIN Relationship_Transmissions P
+ON G.child_id_2 = P.parent_id;
+
+--Copy the resulting table and reduce columns in both tables to merge
+
+DROP TABLE IF EXISTS Number_Children_Reduced_Joined_Children_2 CASCADE;
+SELECT * INTO Number_Children_Reduced_Joined_Children_2
+FROM Number_Children_Reduced_Joined_Children;
+
+ALTER TABLE Number_Children_Reduced_Joined_Children
+DROP COLUMN parent_id,
+DROP COLUMN child_id_2,
+DROP COLUMN idx,
+DROP COLUMN id
+RESTRICT;
+
+ALTER TABLE Number_Children_Reduced_Joined_Children_2
+DROP COLUMN parent_id,
+DROP COLUMN child_id,
+DROP COLUMN idx,
+DROP COLUMN id
+RESTRICT;
+
+--Change values of 
+
+--Change order of columns for merge
+
+ALTER TABLE Number_Children_Reduced_Joined_Children_2
+Add child_id integer;
+
+UPDATE Number_Children_Reduced_Joined_Children_2
+SET child_id=child_id_2;
+
+ALTER TABLE Number_Children_Reduced_Joined_Children_2
+DROP COLUMN child_id_2
+RESTRICT;
+
+--Change number of children in table without children to 0
+UPDATE Number_Children_Reduced_Joined_Children_2
+SET number_of_children=0;
+
+DROP TABLE IF EXISTS Number_Children_Reduced_Union CASCADE;
+SELECT *
+INTO Number_Children_Reduced_Union
+FROM
+    Number_Children_Reduced_Joined_Children
+UNION
+SELECT *
+FROM
+    Number_Children_Reduced_Joined_Children_2;
+
+
+--Note: Union returned 122056, Union all returned 122086
+
+SELECT COUNT(*) FROM Number_Children_Reduced_Union;
+
+SELECT COUNT(DISTINCT child_id) FROM Number_Children_Reduced_Union;
+--81295
+--74130
+
+--Create distinct table
+DROP TABLE IF EXISTS Number_Children_Reduced_Union_Distinct CASCADE;
+SELECT *
+INTO Number_Children_Reduced_Union_Distinct
+FROM Number_Children_Reduced_Union
+
+DROP TABLE IF EXISTS Number_Children_Reduced_Union_Distinct CASCADE;
+SELECT DISTINCT ON (child_id) child_id, number_of_children
+INTO Number_Children_Reduced_Union_Distinct
+FROM Number_Children_Reduced_Union;
+
+
+--Join again with relationship
+DROP TABLE IF EXISTS Number_Children_Reduced_Union_Distinct_Relationship CASCADE;
+SELECT * INTO Number_Children_Reduced_Union_Distinct_Relationship
+FROM Number_Children_Reduced_Union_Distinct G
+JOIN Relationship_Transmissions P USING (child_id);
+
+SELECT COUNT(*) FROM Number_Children_Reduced_Union;
+SELECT COUNT(*) FROM Number_Children_Reduced_Union_Distinct;
+SELECT COUNT(*) FROM Number_Children_Reduced_Union_Distinct_Relationship;
+
+--81295
+--74130
+--146363
+
+ALTER TABLE Number_Children_Reduced_Union_Distinct_Relationship
+DROP COLUMN id,
+DROP COLUMN idx
+RESTRICT;
+
+
+--Create table of all children of a particular parent (replace ID accordingly)
+DROP TABLE IF EXISTS Children_7165181 CASCADE;
+WITH RECURSIVE children AS (
+SELECT child_id, 1 AS depth
+FROM Number_Children_Reduced_Union_Distinct_Relationship
+WHERE parent_id = 7165181
+UNION ALL
+SELECT a.child_id, depth+1
+FROM Number_Children_Reduced_Union_Distinct_Relationship a
+JOIN children b ON(a.parent_id = b.child_id)
+)
+SELECT * INTO Children_7165181 FROM children;
+
+
+--Join with Gen
+
+--Rename column so it will join easily
+ALTER TABLE Children_7165181 RENAME COLUMN child_id TO id;
+
+--Join
+DROP TABLE IF EXISTS Gen_7165181 CASCADE;
+SELECT * INTO Gen_7165181
+FROM Children_7165181 G
+JOIN Gen P USING (id);
+
+--Create one for parent 1
+DROP TABLE IF EXISTS Gen_7165181_1 CASCADE;
+SELECT * INTO Gen_7165181_1
+FROM Gen_7165181;
+
+--Create one for parent 2
+DROP TABLE IF EXISTS Gen_7165181_2 CASCADE;
+SELECT * INTO Gen_7165181_2
+FROM Gen_7165181;
+
+--Create one for children
+DROP TABLE IF EXISTS Gen_7165181_children CASCADE;
+SELECT * INTO Gen_7165181_children
+FROM Gen_7165181;
+
+
+
+--(1.5)Reduce table 1 to just id and columns for parent 1
+ALTER TABLE Gen_7165181_1
+DROP COLUMN sequence,
+DROP COLUMN id_2,
+DROP COLUMN lon_2,
+DROP COLUMN lat_2,
+DROP COLUMN country_2,
+DROP COLUMN continent_2,
+DROP COLUMN res_2,
+DROP COLUMN byear_2,
+DROP COLUMN dyear_2,
+DROP COLUMN parent_id_2,
+DROP COLUMN idx_2,
+DROP COLUMN lon,
+DROP COLUMN lat,
+DROP COLUMN country,
+DROP COLUMN continent,
+DROP COLUMN res,
+DROP COLUMN byear,
+DROP COLUMN dyear,
+DROP COLUMN gender,
+DROP COLUMN late_yr,
+DROP COLUMN diff,
+DROP COLUMN tot_mo
+RESTRICT;
+
+--(1.6) Reduce table 2 to just id and columns for parent 2
+ALTER TABLE Gen_7165181_2
+DROP COLUMN sequence,
+DROP COLUMN id_1,
+DROP COLUMN lon_1,
+DROP COLUMN lat_1,
+DROP COLUMN country_1,
+DROP COLUMN continent_1,
+DROP COLUMN res_1,
+DROP COLUMN byear_1,
+DROP COLUMN dyear_1,
+DROP COLUMN parent_id_1,
+DROP COLUMN idx_1,
+DROP COLUMN lon,
+DROP COLUMN lat,
+DROP COLUMN country,
+DROP COLUMN continent,
+DROP COLUMN res,
+DROP COLUMN byear,
+DROP COLUMN dyear,
+DROP COLUMN gender,
+DROP COLUMN late_yr,
+DROP COLUMN diff,
+DROP COLUMN tot_mo
+RESTRICT;
+
+--(1.7) Reduce table 1 to just id and columns for children
+ALTER TABLE Gen_7165181_Children
+DROP COLUMN sequence,
+DROP COLUMN id_2,
+DROP COLUMN lon_2,
+DROP COLUMN lat_2,
+DROP COLUMN country_2,
+DROP COLUMN continent_2,
+DROP COLUMN res_2,
+DROP COLUMN byear_2,
+DROP COLUMN dyear_2,
+DROP COLUMN parent_id_2,
+DROP COLUMN idx_2,
+DROP COLUMN id_1,
+DROP COLUMN lon_1,
+DROP COLUMN lat_1,
+DROP COLUMN country_1,
+DROP COLUMN continent_1,
+DROP COLUMN res_1,
+DROP COLUMN byear_1,
+DROP COLUMN dyear_1,
+DROP COLUMN parent_id_1,
+DROP COLUMN idx_1
+RESTRICT;
+
+
+ALTER TABLE Gen_7165181_1
+DROP COLUMN depth
+RESTRICT;
+
+ALTER TABLE Gen_7165181_2
+DROP COLUMN depth
+RESTRICT;
+
+ALTER TABLE Children_7165181 RENAME COLUMN id TO child_id;
+
+--Reduce parent 1
+DROP TABLE IF EXISTS Gen_7165181_1_Reduced CASCADE;
+SELECT * INTO Gen_7165181_1_Reduced
+FROM Gen_7165181_1 G
+JOIN Children_7165181 P
+ON P.child_id = G.id_1;
+
+--Reduce parent 2
+DROP TABLE IF EXISTS Gen_7165181_2_Reduced CASCADE;
+SELECT * INTO Gen_7165181_2_Reduced
+FROM Gen_7165181_2 G
+JOIN Children_7165181 P
+ON P.child_id = G.id_2;
+
+--Drop Columns
+ALTER TABLE Gen_7165181_1_Reduced
+DROP COLUMN child_id,
+DROP COLUMN depth
+RESTRICT;
+
+ALTER TABLE Gen_7165181_2_Reduced
+DROP COLUMN child_id,
+DROP COLUMN depth
+RESTRICT;
+
+
+--(1.9) Full Join table 1 with Gen IDs
+DROP TABLE IF EXISTS Gen_7165181_Rejoin_first_merge CASCADE;
+SELECT * INTO Gen_7165181_Rejoin_first_merge
+FROM Gen_7165181_1_Reduced G
+FULL OUTER JOIN Gen_7165181_2_Reduced P using (Id);
+
+--(1.11) Full Join Result with table 3
+DROP TABLE IF EXISTS Gen_7165181_Rejoin CASCADE;
+SELECT * INTO Gen_7165181_Rejoin
+FROM Gen_7165181_Rejoin_first_merge G
+FULL OUTER JOIN Gen_7165181_Children P using (Id);
+
+/*
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+--Join Transmissions table
+DROP TABLE IF EXISTS Relationship_Transmissions_With_Children CASCADE;
+SELECT * INTO Relationship_Transmissions_With_Children
+FROM Number_Children_Reduced G
+JOIN relationship_transmissions P using (child_id)
+
+--Create table of all children of a particular parent (replace ID accordingly)
+DROP TABLE IF EXISTS Children_7165181 CASCADE;
+WITH RECURSIVE children AS (
+SELECT child_id, 1 AS depth
+FROM Relationship_Transmissions_With_Children
+WHERE parent_id = 7165181
+UNION ALL
+SELECT a.child_id, depth+1
+FROM Relationship_Transmissions_With_Children a
+JOIN children b ON(a.parent_id = b.child_id)
+)
+SELECT * INTO Children_7165181 FROM children;
+
+
+--Run Counts
+/*
+
+SELECT COUNT(*) FROM number_children_reduced;
+--22,639
+
+SELECT COUNT(*) FROM Gen;
+--194,819
+
+*/
+
+
+--Join with relationship_transmissions so that
+--each parent is associated with a child
+
+--Rename column so it will join
+ALTER TABLE Children_7165181 RENAME COLUMN child_id TO child_id_2;
+
+--Join
+DROP TABLE IF EXISTS All_Transmission_Relations_7165181 CASCADE;
+SELECT * INTO All_Transmission_Relations_7165181
+FROM Children_7165181 G
+JOIN relationship_transmissions P
+ON G.child_id_2 = P.parent_id;
+
+--Create reduced tables and rename columns
+
+ALTER TABLE Children_7165181 RENAME COLUMN child_id_2 TO id;
+
+DROP TABLE IF EXISTS Parents_7165181 CASCADE;
+SELECT * INTO Parents_7165181
+FROM All_Transmission_Relations_7165181;
+
+DROP TABLE IF EXISTS Children_7165181_2 CASCADE;
+SELECT * INTO Children_7165181_2
+FROM All_Transmission_Relations_7165181;
+
+ALTER TABLE Children_7165181_2
+DROP COLUMN child_id_2,
+DROP COLUMN idx,
+DROP COLUMN child_id,
+DROP COLUMN parent_id
+RESTRICT;
+
+ALTER TABLE Parents_7165181
+DROP COLUMN child_id_2,
+DROP COLUMN idx,
+DROP COLUMN child_id,
+DROP COLUMN id
+RESTRICT;
+
+ALTER TABLE Parents_7165181 RENAME COLUMN parent_id TO id;
+
+--Add columns to show values
+
+ALTER TABLE Children_7165181_2
+ADD origin character varying(250);
+
+ALTER TABLE Children_7165181
+ADD origin character varying(250);
+
+ALTER TABLE Parents_7165181
+ADD origin character varying(250);
+
+UPDATE Parents_7165181 SET origin = 'Parents_7165181';
+UPDATE Children_7165181 SET origin = 'Children_7165181';
+UPDATE Children_7165181_2 SET origin = 'Children_7165181_2';
+
+--Export all tables as csv, merge manually and reimport
+
+COPY Parents_7165181 TO 'D:\Parents_7165181.csv' DELIMITER ',' CSV HEADER;
+COPY Children_7165181 TO 'D:\Children_7165181.csv' DELIMITER ',' CSV HEADER;
+COPY Children_7165181_2 TO 'D:\Children_7165181_2.csv' DELIMITER ',' CSV HEADER;
+
+--Create and load table
+DROP TABLE IF EXISTS Progeny_7165181 CASCADE;
+
+CREATE TABLE Progeny_7165181
+(
+Id integer,
+depth integer,
+origin character varying(250)
+);
+
+copy Progeny_7165181 from 'D:\Progeny_7165181.csv' delimiter as ',' csv header;
+--983 rows affected
+
+--Reduce to just distincts
+
+SELECT COUNT(DISTINCT id) FROM Progeny_7165181;
+
+--443
+
+--Reduce duplicates - not working, skipping
+DROP TABLE IF EXISTS Progeny_7165181_Reduced CASCADE;
+CREATE TABLE Progeny_7165181_Reduced AS (
+    SELECT depth, origin, max(id) FROM Progeny_7165181 GROUP BY depth, origin
+);
+
+ALTER TABLE Dots_Reduced RENAME COLUMN max TO id;
