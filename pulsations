@@ -1,0 +1,346 @@
+--Generate pulsation
+
+--Create reduced Gen table
+
+--Create table "Dots"
+DROP TABLE IF EXISTS Dots CASCADE;
+SELECT * INTO Dots FROM Gen;
+
+--Reduce columns
+
+ALTER TABLE Dots
+--DROP COLUMN id,
+DROP COLUMN id_2,
+DROP COLUMN lon_2,
+DROP COLUMN lat_2,
+DROP COLUMN country_2,
+DROP COLUMN continent_2,
+DROP COLUMN res_2,
+DROP COLUMN byear_2,
+DROP COLUMN dyear_2,
+DROP COLUMN id_1,
+DROP COLUMN lon_1,
+DROP COLUMN lat_1,
+DROP COLUMN country_1,
+DROP COLUMN continent_1,
+DROP COLUMN res_1,
+DROP COLUMN byear_1,
+DROP COLUMN dyear_1,
+DROP COLUMN idx_2,
+DROP COLUMN parent_id_2,
+DROP COLUMN idx_1,
+DROP COLUMN parent_id_1,
+--DROP COLUMN lon,
+--DROP COLUMN lat,
+DROP COLUMN country,
+DROP COLUMN continent,
+DROP COLUMN res,
+--DROP COLUMN byear,
+DROP COLUMN dyear,
+DROP COLUMN gender,
+DROP COLUMN late_yr,
+DROP COLUMN diff,
+DROP COLUMN tot_mo
+RESTRICT;
+
+--Eliminate nulls
+
+DELETE FROM Dots
+WHERE lon IS NULL;
+
+--create copy of table
+--DROP TABLE IF EXISTS Dots2 CASCADE;
+--SELECT * INTO Dots2 FROM Dots;
+
+/*
+--First run counts before reducing
+SELECT COUNT(DISTINCT CONCAT) FROM Dots;
+
+SELECT COUNT(*) FROM Dots;
+
+--Total rows: 117,871
+--Distincts: 299,440
+
+*/
+
+--Add "11" to table
+
+ALTER TABLE Dots
+ADD Pulse_Num integer;
+
+UPDATE Dots SET Pulse_Num = 11;
+
+--Join with pulse_num to create pulsation table
+
+--Create "dummy" table, pulse_num
+DROP TABLE IF EXISTS pulse_num CASCADE;
+CREATE TABLE pulse_num
+(
+num integer,
+pulse integer
+);
+
+copy pulse_num from 'D:\largest_family_tree\Queries\dummy_tables\pulse.csv' delimiter as ',' csv header;
+
+
+--Multiply by pulse table to create pulsation table
+
+DROP TABLE IF EXISTS pulsation CASCADE;
+SELECT * INTO pulsation
+FROM
+        Dots AS D
+    JOIN
+        pulse_num
+            ON pulse_num.num <= D.pulse_num;
+
+--Add Type
+
+ALTER TABLE pulsation
+ADD TYPE character varying(250);
+
+UPDATE pulsation
+SET TYPE = 'Pulsation';
+
+--Add Start_Date and End_Date
+
+/*
+
+--By Month
+
+--Start_Date
+
+ALTER TABLE pulsation
+ADD Start_Date character varying(250);
+
+UPDATE pulsation SET Start_Date = CONCAT (byear,'-','0',num)
+
+WHERE
+num = 1 OR
+num = 2 OR
+num = 3 OR
+num = 4 OR
+num = 5 OR
+num = 6 OR
+num = 7 OR
+num = 8 OR
+num = 9;
+
+UPDATE pulsation SET Start_Date = CONCAT (byear,'-',num)
+WHERE
+num = 10 OR
+num = 11;
+
+
+--End_Date
+
+--ALTER TABLE pulsation
+--ADD End_Date character varying(250);
+
+UPDATE pulsation SET End_Date = CONCAT (byear,'-','0',(num+1))
+WHERE
+num = 1 OR
+num = 2 OR
+num = 3 OR
+num = 4 OR
+num = 5 OR
+num = 6 OR
+num = 7 OR
+num = 8;
+
+UPDATE pulsation SET End_Date = CONCAT (byear,'-',(num+1))
+WHERE
+num = 10 OR
+num = 11 OR
+num = 9;
+
+*/
+
+/*
+
+--By year  (good for 10 secs over 400 years)
+
+ALTER TABLE pulsation
+ADD Start_Date character varying(250);
+
+UPDATE pulsation SET Start_Date = CONCAT (byear+num-1,'-01')
+
+
+ALTER TABLE pulsation
+ADD End_Date character varying(250);
+
+UPDATE pulsation SET End_Date = CONCAT (byear+num,'-01')
+
+*/
+
+--Every 3 months (good for 40 secs over 400 years)
+
+ALTER TABLE pulsation
+ADD Start_Date character varying(250);
+
+UPDATE pulsation SET Start_Date = CONCAT (byear,'-','0',num)
+WHERE num = 1;
+
+UPDATE pulsation SET Start_Date = CONCAT (byear,'-','04')
+WHERE num = 2;
+
+UPDATE pulsation SET Start_Date = CONCAT (byear,'-','07')
+WHERE num = 3;
+
+UPDATE pulsation SET Start_Date = CONCAT (byear,'-','10')
+WHERE num = 4;
+
+UPDATE pulsation SET Start_Date = CONCAT (byear+1,'-','01')
+WHERE num = 5;
+
+UPDATE pulsation SET Start_Date = CONCAT (byear+1,'-','04')
+WHERE num = 6;
+
+UPDATE pulsation SET Start_Date = CONCAT (byear+1,'-','07')
+WHERE num = 7;
+
+UPDATE pulsation SET Start_Date = CONCAT (byear+1,'-','10')
+WHERE num = 8;
+
+UPDATE pulsation SET Start_Date = CONCAT (byear+2,'-','01')
+WHERE num = 9;
+
+UPDATE pulsation SET Start_Date = CONCAT (byear+2,'-','04')
+WHERE num = 10;
+
+UPDATE pulsation SET Start_Date = CONCAT (byear+2,'-','07')
+WHERE num = 11;
+
+--End_Date
+
+ALTER TABLE pulsation
+ADD End_Date character varying(250);
+
+UPDATE pulsation SET End_Date = CONCAT (byear,'-','04')
+WHERE num = 1;
+
+UPDATE pulsation SET End_Date = CONCAT (byear,'-','07')
+WHERE num = 2;
+
+UPDATE pulsation SET End_Date = CONCAT (byear,'-','10')
+WHERE num = 3;
+
+UPDATE pulsation SET End_Date = CONCAT (byear+1,'-','01')
+WHERE num = 4;
+
+UPDATE pulsation SET End_Date = CONCAT (byear+1,'-','04')
+WHERE num = 5;
+
+UPDATE pulsation SET End_Date = CONCAT (byear+1,'-','07')
+WHERE num = 6;
+
+UPDATE pulsation SET End_Date = CONCAT (byear+1,'-','10')
+WHERE num = 7;
+
+UPDATE pulsation SET End_Date = CONCAT (byear+2,'-','01')
+WHERE num = 8;
+
+UPDATE pulsation SET End_Date = CONCAT (byear+2,'-','04')
+WHERE num = 9;
+
+UPDATE pulsation SET End_Date = CONCAT (byear+2,'-','07')
+WHERE num = 10;
+
+UPDATE pulsation SET End_Date = CONCAT (byear+2,'-','10')
+WHERE num = 11;
+
+
+--Drop extraneous column
+
+ALTER TABLE Pulsation
+DROP COLUMN pulse_num
+RESTRICT;
+
+/*
+--Count rows
+
+SELECT COUNT(*) FROM pulsation;
+
+--Result, old: 4,808,408
+--Result, new: 3,293,840
+
+*/
+
+--Export to CSV
+COPY Pulsation TO 'D:\Pulsation.csv' DELIMITER ',' CSV HEADER;
+
+--3,293,840 rows affected
+
+
+
+
+---------------------------------------------------
+
+--Reduced pulsations (for all)
+
+	ALTER TABLE Pulsation
+	ADD yr_start integer,
+	ADD yr_end integer
+	--ADD start_Date character varying(250),
+	--ADD end_Date character varying(250),
+	--ADD pulse integer,
+	--ADD type character varying(250)
+	;
+
+/*
+--Reduced pulsations (for all)
+
+	ALTER TABLE Dots
+	ADD yr_start integer,
+	ADD yr_end integer,
+	ADD start_Date character varying(250),
+	ADD end_Date character varying(250),
+	ADD pulse integer,
+	ADD type character varying(250)
+	;
+
+*/
+
+--Reorder
+DROP TABLE IF EXISTS Pulsation_Reordered CASCADE;
+CREATE TABLE Pulsation_Reordered AS (
+    SELECT id, byear, sequence, yr_start, yr_end, start_date, end_date, lat, lon, pulse, type
+    FROM Pulsation GROUP BY id, byear, sequence, yr_start, yr_end, start_date, end_date, lat, lon, pulse, type
+);
+
+DROP TABLE IF EXISTS Dots_Reordered CASCADE;
+CREATE TABLE Dots_Reordered AS (
+    SELECT id, byear, sequence, yr_start, yr_end, start_date, end_date, lat, lon, pulse, type
+    FROM Dots GROUP BY id, byear, sequence, yr_start, yr_end, start_date, end_date, lat, lon, pulse, type
+);
+
+
+--Add values
+UPDATE Dots_Reordered
+SET TYPE = 'Pulsation';
+
+UPDATE Dots_Reordered
+SET Pulse = 2;
+
+UPDATE Dots_Reordered
+SET yr_start = byear;
+
+--Add values
+
+UPDATE Pulsation_Reordered
+SET yr_start = byear;
+
+UPDATE Pulsation_Reordered
+SET yr_end = byear;
+
+--
+
+UPDATE Dots_Reordered
+SET yr_end = byear;
+
+UPDATE Dots_Reordered SET Start_Date = CONCAT (byear,'-','01');
+UPDATE Dots_Reordered SET End_Date = CONCAT (byear,'-','02');
+
+--
+
+UPDATE Pulsation_Reordered SET pulse = 55
+WHERE pulse = 1;
